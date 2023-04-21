@@ -15,6 +15,7 @@ class Block {
         this.data = data
         this.previousHash = previousHash;
         this.hash = this.calculateHash();     // hash of the created block
+        this.nonce = 0;     // random value - used in mineBlock method
     }
 
     /**
@@ -26,7 +27,28 @@ class Block {
     calculateHash() {
         // using SHA256, not available in javascript by defaut
         // need to install and import crypto-js
-        return SHA256(this.index + this.previousHash + this.timestamp + JSON.stringify(this.data)).toString();
+        return SHA256(this.index + this.previousHash + this.timestamp + JSON.stringify(this.data) + this.nonce).toString();
+    }
+
+    /**
+     * Get the hash to begin with a certain amount of zeros based on difficulty
+     * Will prevent the mining of lots of blocks very quickly
+     * 
+     * @param {number} difficulty - will help determine the amount of zeros needed to create a block
+     */
+    mineBlock(difficulty) {
+        // keep looping until we reach a hash that begins with 
+        // the amount of zeros designated by difficulty
+        // Array(difficulty + 1).join("0") creates an array of all zeros
+        while (this.hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
+            // changing this basically changes the contents of the mined block, which then causes the hash to change
+            // otherwise, this will be an endless loop since the hash will not change because the data is the same
+            // could be stuck on the hash with the right amount of zeros
+            this.nonce++;
+            this.hash = this.calculateHash();
+        }
+
+        console.log("Block mined:", this.hash);
     }
 }
 
@@ -36,6 +58,7 @@ class Blockchain {
      */
     constructor() {
         this.chain = [this.createGenesisBlock()];    // an array of blocks
+        this.difficulty = 5; 
     }
     
     /**
@@ -65,7 +88,8 @@ class Blockchain {
      */
     addBlock(new_block) {
         new_block.previousHash = this.getLatestBlock().hash;
-        new_block.hash = new_block.calculateHash();
+        // new_block.hash = new_block.calculateHash();
+        new_block.mineBlock(this.difficulty);
 
         this.chain.push(new_block);
     }
@@ -100,17 +124,24 @@ class Blockchain {
 }
 
 let democoin = new Blockchain();
-democoin.addBlock(new Block(1, "04/21/2023", { amount: 10 }));
-democoin.addBlock(new Block(2, "04/22/2023", { amount: 20 }));
 
-//console.log(JSON.stringify(democoin, null, 4));
 
-// valid case - no tampering
-console.log('Is blockchain valid?', democoin.isChainValid());
+// Testing mineBlock()
+console.log('Mining block 1...');
+democoin.addBlock(new Block(1, "04/21/2023", { amount: 30 }));
+
+console.log('Mining block 2...');
+democoin.addBlock(new Block(2, "04/22/2023", { amount: 40 }));
+
+// valid case - no tampering - creating and add blocks to the chain
+// democoin.addBlock(new Block(1, "04/21/2023", { amount: 10 }));
+// democoin.addBlock(new Block(2, "04/22/2023", { amount: 20 }));
+// console.log(JSON.stringify(democoin, null, 4));
+// console.log('Is blockchain valid?', democoin.isChainValid());
 
 // invalid case
-democoin.chain[1].data = { amount: 500 };
+// democoin.chain[1].data = { amount: 500 };
 // still invalid with attempt to re-calculate hash
 // the relationship to the next block is still broken
-democoin.chain[1].hash = democoin.chain[1].calculateHash();
-console.log('Is blockchain valid?', democoin.isChainValid());
+// democoin.chain[1].hash = democoin.chain[1].calculateHash();
+// console.log('Is blockchain valid?', democoin.isChainValid());
