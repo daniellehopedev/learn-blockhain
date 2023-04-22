@@ -1,18 +1,31 @@
 const SHA256 = require('crypto-js/sha256');
 
+class Transaction {
+    /**
+     * Constructor for transaction instance
+     * 
+     * @param {string} fromAddress 
+     * @param {string} toAddress 
+     * @param {number} amount 
+     */
+    constructor(fromAddress, toAddress, amount) {
+        this.fromAddress = fromAddress;
+        this.toAddress = toAddress;
+        this.amount = amount;
+    }
+}
+
 class Block {
     /**
-     * Contructor for creating a Block
+     * Constructor for creating a Block
      * 
-     * @param {number} index - optional, where the block sits on the chain
      * @param {string} timestamp - when the block was created
-     * @param {object} data - any data to associate with the block, details of transaction
+     * @param {object} transactions - any data to associate with the block, details of transaction
      * @param {string} previousHash - contains hash of the previous block
      */
-    constructor(index, timestamp, data, previousHash = '') {
-        this.index = index;
+    constructor(timestamp, transactions, previousHash = '') {
         this.timestamp = timestamp;
-        this.data = data
+        this.transactions = transactions
         this.previousHash = previousHash;
         this.hash = this.calculateHash();     // hash of the created block
         this.nonce = 0;     // random value - used in mineBlock method
@@ -58,7 +71,9 @@ class Blockchain {
      */
     constructor() {
         this.chain = [this.createGenesisBlock()];    // an array of blocks
-        this.difficulty = 5; 
+        this.difficulty = 2; 
+        this.pendingTransactions = [];  // will hold transactions made in between blocks
+        this.miningReward = 100;    // the reward for successfully mining
     }
     
     /**
@@ -67,7 +82,7 @@ class Blockchain {
      * @returns new Block();
      */
     createGenesisBlock() {
-        return new Block(0, "01/01/2023", "Genesis block", "0000");
+        return new Block("01/01/2023", "Genesis block", "0000");
     }
 
     /**
@@ -80,18 +95,65 @@ class Blockchain {
     }
 
     /**
-     * Adds a new block to the chain
-     * Sets previousHash property of new_block to the last block on the chain
-     * Then calculates a new hash value since a property has changed on new_block (previousHash)
+     * Initializes a block with any pending transactions and mines it
+     * after it is mined, it is added to the chain
+     * The reward is then sent to the mining reward address (wallet)
      * 
-     * @param {Block} new_block 
+     * @param {string} miningRewardAddress 
      */
-    addBlock(new_block) {
-        new_block.previousHash = this.getLatestBlock().hash;
-        // new_block.hash = new_block.calculateHash();
-        new_block.mineBlock(this.difficulty);
+    minePendingTransactions(miningRewardAddress){
+        // create a new block, initialized with any pending transactions
+        let block = new Block(Date.now(), this.pendingTransactions);
+        // mine the block
+        block.mineBlock(this.difficulty);
 
-        this.chain.push(new_block);
+        // after successfully mining, add the block to the chain
+        console.log('Block successfully mined!');
+        this.chain.push(block);
+
+        // reset the pendingTransactions array
+        this.pendingTransactions = [ new Transaction(null, miningRewardAddress, this.miningReward) ];
+
+        // side note: in reality, miners get to choose the transaction they want to include
+        // there are way too many pending transactions to try to store or try to run them all
+    }
+
+    /**
+     * Takes a transaction and adds it to pendingTransactions
+     *  
+     * @param {object} transaction
+     * */
+    createTransaction(transaction) {
+        this.pendingTransactions.push(transaction);
+    }
+
+    /**
+     * Checks the balance of the address
+     * 
+     * @param {string} address
+     * 
+     * @returns balance
+     */
+    getBalanceOfAddress(address) {
+        let balance = 0;
+
+        // loop over all the blocks in the chain
+        for (const block of this.chain) {
+            // loop over all transactions in the block
+            for (const trans of block.transactions) {
+                // giver
+                if (trans.fromAddress === address) {
+                    balance -= trans.amount;
+                }
+
+                // receiver
+                if (trans.toAddress === address) {
+                    balance += trans.amount;
+                }
+            }
+        }
+
+        return balance;
     }
 
     /**
@@ -125,23 +187,20 @@ class Blockchain {
 
 let democoin = new Blockchain();
 
+democoin.createTransaction(new Transaction('patricks-address', 'squidwards-address', 200));
+democoin.createTransaction(new Transaction('squidwards-address', 'patricks-address', 100));
 
-// Testing mineBlock()
-console.log('Mining block 1...');
-democoin.addBlock(new Block(1, "04/21/2023", { amount: 30 }));
+// the addresses in reality would be the public key of someones wallet
+// after creating these transactions, they will be pending transactions
+// will need to start the miner, to create the block and add it to the chain
 
-console.log('Mining block 2...');
-democoin.addBlock(new Block(2, "04/22/2023", { amount: 40 }));
+console.log('\n Starting the miner...');
+democoin.minePendingTransactions('spongebobs-address');
+console.log('\n Balance of spongebob is', democoin.getBalanceOfAddress('spongebobs-address'));
 
-// valid case - no tampering - creating and add blocks to the chain
-// democoin.addBlock(new Block(1, "04/21/2023", { amount: 10 }));
-// democoin.addBlock(new Block(2, "04/22/2023", { amount: 20 }));
-// console.log(JSON.stringify(democoin, null, 4));
-// console.log('Is blockchain valid?', democoin.isChainValid());
-
-// invalid case
-// democoin.chain[1].data = { amount: 500 };
-// still invalid with attempt to re-calculate hash
-// the relationship to the next block is still broken
-// democoin.chain[1].hash = democoin.chain[1].calculateHash();
-// console.log('Is blockchain valid?', democoin.isChainValid());
+// balance will still be 0 here
+// in minePendingTransactions, the reward is added to pending transactions
+// the reward won't be sent until the next block is mined
+console.log('\n Starting the miner again...');
+democoin.minePendingTransactions('spongebobs-address');
+console.log('\n Balance of spongebob is', democoin.getBalanceOfAddress('spongebobs-address'));
