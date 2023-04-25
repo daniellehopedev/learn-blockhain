@@ -2,6 +2,7 @@
 
 ### Description:
 Simple JavaScript App showing how a blockchain works in the most basic form.
+For learning purposes.
 
 ### Classes:
 - Block: initialize a block
@@ -16,7 +17,8 @@ Simple JavaScript App showing how a blockchain works in the most basic form.
 - check validity of a chain based on hash values and hash relationship to previous block
 - proof of work - controls spamming the creation of blocks
 - very simplified functionality of cryptocurrency (multiple transactions in a block and mining reward)
+- signing transactions with keys
 
-### Missing Features:
-- peer to peer network to communicate with other miners
+### TODO:
 - does not check if there are enough funds for a transaction
+- transactions are hanging in pendingTransactions until a mine or another transaction causes it to be picked up
