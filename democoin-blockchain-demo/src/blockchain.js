@@ -1,4 +1,6 @@
 const SHA256 = require('crypto-js/sha256');
+const EC = require('elliptic').ec;
+const ec = new EC('secp256k1');
 
 class Transaction {
     /**
@@ -12,6 +14,52 @@ class Transaction {
         this.fromAddress = fromAddress;
         this.toAddress = toAddress;
         this.amount = amount;
+    }
+
+    /**
+     * Calculate Hash of the transaction
+     * 
+     * @returns SHA256 hash of the transaction - will sign the hash of the transaction with the private key
+     */
+    calculateHash() {
+        return SHA256(this.fromAddress + this.toAddress + this.amount).toString();
+    }
+
+    /**
+     *  Sign the calculated Hash of a transaction with the signing key
+     * 
+     * @param {Object} signingKey - the object that is returned from genKeyPair()
+     */
+    signTransaction(signingKey) {
+        // check if public key === fromAddress
+        if (signingKey.getPublic('hex') !== this.fromAddress) {
+            throw new Error('You cannot sign transactions for other wallets!');
+        }
+
+        const hashTx = this.calculateHash();
+        const sig = signingKey.sign(hashTx, 'base64');
+
+        this.signature = sig.toDER('hex');
+    }
+
+    /**
+     * Validate if transaction was signed correctly
+     * 
+     * @returns a boolean of if the public key is verified or not
+     */
+    isValid() {
+        // handling case for mining reward transaction
+        // if fromAddress is null, assume it is for mining reward 
+        if (this.fromAddress === null) return true;
+
+        // no signature case
+        if (!this.signature || this.signature.length === 0) {
+            throw new Error('No signature in this transaction');
+        }
+        
+        // if there is a signature, get the public key and verify if the transaction was signed with that key
+        const publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
+        return publicKey.verify(this.calculateHash(), this.signature);
     }
 }
 
@@ -63,6 +111,22 @@ class Block {
 
         console.log("Block mined:", this.hash);
     }
+
+    /**
+     * Verify all transactions in the current block
+     * Iterate over all the transactions
+     * 
+     * @returns boolean of if all transactions are valid
+     */
+    hasValidTransactions() {
+        for (const tx of this.transactions) {
+            if (!tx.isValid()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }
 
 class Blockchain {
@@ -102,8 +166,12 @@ class Blockchain {
      * @param {string} miningRewardAddress 
      */
     minePendingTransactions(miningRewardAddress){
+        // create a transaction for the reward and push to pending transactions
+        const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
+        this.pendingTransactions.push(rewardTx);
+
         // create a new block, initialized with any pending transactions
-        let block = new Block(Date.now(), this.pendingTransactions);
+        let block = new Block(Date.now(), this.pendingTransactions, this.getLatestBlock().hash);
         // mine the block
         block.mineBlock(this.difficulty);
 
@@ -112,7 +180,7 @@ class Blockchain {
         this.chain.push(block);
 
         // reset the pendingTransactions array
-        this.pendingTransactions = [ new Transaction(null, miningRewardAddress, this.miningReward) ];
+        this.pendingTransactions = [];
 
         // side note: in reality, miners get to choose the transaction they want to include
         // there are way too many pending transactions to try to store or try to run them all
@@ -123,7 +191,15 @@ class Blockchain {
      *  
      * @param {object} transaction
      * */
-    createTransaction(transaction) {
+    addTransaction(transaction) {
+        if (!transaction.fromAddress || !transaction.toAddress) {
+            throw new Error('Transaction must include from and to address');
+        }
+
+        if (!transaction.isValid()) {
+            throw new Error('Cannot add invalid transaction to chain');
+        }
+
         this.pendingTransactions.push(transaction);
     }
 
@@ -169,6 +245,11 @@ class Blockchain {
             const currentBlock = this.chain[i];
             const previousBlock = this.chain[i - 1];
 
+            // check if all the transaction of the current block are valid
+            if (!currentBlock.hasValidTransactions()) {
+                return false;
+            }
+
             // check if hash is valid
             // compare the set hash to what the has should be based on calculateHash
             if (currentBlock.hash !== currentBlock.calculateHash()) {
@@ -185,22 +266,5 @@ class Blockchain {
     }
 }
 
-let democoin = new Blockchain();
-
-democoin.createTransaction(new Transaction('patricks-address', 'squidwards-address', 200));
-democoin.createTransaction(new Transaction('squidwards-address', 'patricks-address', 100));
-
-// the addresses in reality would be the public key of someones wallet
-// after creating these transactions, they will be pending transactions
-// will need to start the miner, to create the block and add it to the chain
-
-console.log('\n Starting the miner...');
-democoin.minePendingTransactions('spongebobs-address');
-console.log('\n Balance of spongebob is', democoin.getBalanceOfAddress('spongebobs-address'));
-
-// balance will still be 0 here
-// in minePendingTransactions, the reward is added to pending transactions
-// the reward won't be sent until the next block is mined
-console.log('\n Starting the miner again...');
-democoin.minePendingTransactions('spongebobs-address');
-console.log('\n Balance of spongebob is', democoin.getBalanceOfAddress('spongebobs-address'));
+module.exports.Blockchain = Blockchain;
+module.exports.Transaction = Transaction;
